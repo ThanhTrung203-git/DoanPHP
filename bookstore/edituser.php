@@ -1,149 +1,150 @@
 <?php
 session_start();
+
+// Khai báo các lỗi và giá trị mặc định
 $nameErr = $emailErr = $genderErr = $addressErr = $icErr = $contactErr = $usernameErr = $passwordErr = "";
 $name = $email = $gender = $address = $ic = $contact = $uname = $upassword = "";
-$cID;
+$cID = "";
 
-$oUserName;
-$oPassword;
-$oName;
-$oIC;
-$oEmail;
-$oPhone;
-$oAddress;
+$oUserName = $oPassword = $oName = $oIC = $oEmail = $oPhone = $oAddress = "";
 
+// Kết nối tới cơ sở dữ liệu bằng PDO
 $servername = "localhost";
 $username = "root";
 $password = "";
 
-$conn = new mysqli($servername, $username, $password); 
+try {
+    $conn = new PDO("mysql:host=$servername;dbname=bookstore", $username, $password);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-} 
+    // Lấy thông tin người dùng hiện tại
+    $stmt = $conn->prepare("SELECT users.UserName, users.Password, customer.CustomerName, customer.CustomerIC, 
+                            customer.CustomerEmail, customer.CustomerPhone, customer.CustomerGender, customer.CustomerAddress 
+                            FROM users, customer 
+                            WHERE users.UserID = customer.UserID AND users.UserID = :userID");
+    $stmt->bindParam(':userID', $_SESSION['id']);
+    $stmt->execute();
 
-$sql = "USE bookstore";
-$conn->query($sql);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $oUserName = $row['UserName'];
+    $oPassword = $row['Password'];
+    $oName = $row['CustomerName'];
+    $oIC = $row['CustomerIC'];
+    $oEmail = $row['CustomerEmail'];
+    $oPhone = $row['CustomerPhone'];
+    $oAddress = $row['CustomerAddress'];
 
-$sql = "SELECT users.UserName, users.Password, customer.CustomerName, customer.CustomerIC, customer.CustomerEmail, customer.CustomerPhone, customer.CustomerGender, customer.CustomerAddress
-	FROM users, customer
-	WHERE users.UserID = customer.UserID AND users.UserID = ".$_SESSION['id']."";
-$result = $conn->query($sql);
-while($row = $result->fetch_assoc()){
-	$oUserName = $row['UserName'];
-	$oPassword = $row['Password'];
-	$oName = $row['CustomerName'];
-	$oIC = $row['CustomerIC'];
-	$oEmail = $row['CustomerEmail'];
-	$oPhone = $row['CustomerPhone'];
-	$oAddress = $row['CustomerAddress'];
+} catch (PDOException $e) {
+    echo "Connection failed: " . $e->getMessage();
 }
 
-
+// Kiểm tra dữ liệu form khi người dùng submit
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-	if (empty($_POST["name"])) {
-		$nameErr = "Please enter your name";
-	}else{
-		if (!preg_match("/^[a-zA-Z ]*$/", $name)){
-			$nameErr = "Only letters and white space allowed";
-			$name = "";
-		}else{
-			$name = $_POST['name'];
+    // Kiểm tra và xử lý thông tin từ form
+    if (empty($_POST["name"])) {
+        $nameErr = "Please enter your name";
+    } else {
+        if (!preg_match("/^[a-zA-Z ]*$/", $_POST["name"])) {
+            $nameErr = "Only letters and white space allowed";
+        } else {
+            $name = test_input($_POST["name"]);
+        }
+    }
 
-			if (empty($_POST["uname"])) {
-				$usernameErr = "Please enter your Username";
-				$uname = "";
-			}else{
-				$uname = $_POST['uname'];
+    if (empty($_POST["uname"])) {
+        $usernameErr = "Please enter your Username";
+    } else {
+        $uname = test_input($_POST["uname"]);
+    }
 
-				if (empty($_POST["upassword"])) {
-					$passwordErr = "Please enter your Password";
-					$upassword = "";
-				}else{
-					$upassword = $_POST['upassword'];
+    if (empty($_POST["upassword"])) {
+        $passwordErr = "Please enter your Password";
+    } else {
+        $upassword = test_input($_POST["upassword"]);
+    }
 
-					if (empty($_POST["ic"])){
-						$icErr = "Please enter your IC number";
-					}else{
-						if(!preg_match("/^[0-9 -]*$/", $ic)){
-							$icErr = "Please enter a valid IC number";
-							$ic = "";
-						}else{
-							$ic = $_POST['ic'];
+    if (empty($_POST["ic"])) {
+        $icErr = "Please enter your IC number";
+    } else {
+        if (!preg_match("/^[0-9 -]*$/", $_POST["ic"])) {
+            $icErr = "Please enter a valid IC number";
+        } else {
+            $ic = test_input($_POST["ic"]);
+        }
+    }
 
-							if (empty($_POST["email"])){
-								$emailErr = "Please enter your email address";
-							}else{
-								if (filter_var($email, FILTER_VALIDATE_EMAIL)){
-									$emailErr = "Invalid email format";
-									$email = "";
-								}else{
-									$email = $_POST['email'];
+    if (empty($_POST["email"])) {
+        $emailErr = "Please enter your email address";
+    } else {
+        if (!filter_var($_POST["email"], FILTER_VALIDATE_EMAIL)) {
+            $emailErr = "Invalid email format";
+        } else {
+            $email = test_input($_POST["email"]);
+        }
+    }
 
-									if (empty($_POST["contact"])){
-										$contactErr = "Please enter your phone number";
-									}else{
-										if(!preg_match("/^[0-9 -]*$/", $contact)){
-											$contactErr = "Please enter a valid phone number";
-											$contact = "";
-										}else{
-											$contact = $_POST['contact'];
+    if (empty($_POST["contact"])) {
+        $contactErr = "Please enter your phone number";
+    } else {
+        if (!preg_match("/^[0-9 -]*$/", $_POST["contact"])) {
+            $contactErr = "Please enter a valid phone number";
+        } else {
+            $contact = test_input($_POST["contact"]);
+        }
+    }
 
-											if (empty($_POST["gender"])){
-												$genderErr = "* Gender is required!";
-												$gender = "";
-											}else{
-												$gender = $_POST['gender'];
+    if (empty($_POST["gender"])) {
+        $genderErr = "* Gender is required!";
+    } else {
+        $gender = $_POST["gender"];
+    }
 
-												if (empty($_POST["address"])){
-													$addressErr = "Please enter your address";
-													$address = "";
-												}else{
-													$address = $_POST['address'];
+    if (empty($_POST["address"])) {
+        $addressErr = "Please enter your address";
+    } else {
+        $address = test_input($_POST["address"]);
+    }
 
-													$servername = "localhost";
-													$username = "root";
-													$password = "";
+    // Nếu không có lỗi, thực hiện cập nhật thông tin
+    if (empty($nameErr) && empty($emailErr) && empty($genderErr) && empty($addressErr) && empty($icErr) && empty($contactErr) && empty($usernameErr) && empty($passwordErr)) {
+        try {
+            // Cập nhật thông tin người dùng và thông tin khách hàng
+            $stmt = $conn->prepare("UPDATE users SET UserName = :uname, Password = :upassword WHERE UserID = :userID");
+            $stmt->bindParam(':uname', $uname);
+            $stmt->bindParam(':upassword', $upassword);
+            $stmt->bindParam(':userID', $_SESSION['id']);
+            $stmt->execute();
 
-													$conn = new mysqli($servername, $username, $password); 
+            $stmt = $conn->prepare("UPDATE customer SET CustomerName = :name, CustomerPhone = :contact, 
+                                    CustomerIC = :ic, CustomerEmail = :email, CustomerAddress = :address, 
+                                    CustomerGender = :gender WHERE UserID = :userID");
+            $stmt->bindParam(':name', $name);
+            $stmt->bindParam(':contact', $contact);
+            $stmt->bindParam(':ic', $ic);
+            $stmt->bindParam(':email', $email);
+            $stmt->bindParam(':address', $address);
+            $stmt->bindParam(':gender', $gender);
+            $stmt->bindParam(':userID', $_SESSION['id']);
+            $stmt->execute();
 
-													if ($conn->connect_error) {
-													    die("Connection failed: " . $conn->connect_error);
-													} 
+            // Chuyển hướng về trang index sau khi cập nhật thành công
+            header("Location: index.php");
+            exit;
 
-													$sql = "USE bookstore";
-													$conn->query($sql);
+        } catch (PDOException $e) {
+            echo "Update failed: " . $e->getMessage();
+        }
+    }
+}
 
-													$sql = "UPDATE users SET UserName = '".$uname."', Password = '".$upassword."' WHERE UserID = "
-													.$_SESSION['id']."";
-													$conn->query($sql);
-
-													$sql = "UPDATE customer SET CustomerName = '".$name."', CustomerPhone = '".$contact."', 
-													CustomerIC = '".$ic."', CustomerEmail = '".$email."', CustomerAddress = '".$address."', 
-													CustomerGender = '".$gender."'";
-													$conn->query($sql);
-
-													header("Location:index.php");
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}												
-function test_input($data){
-	$data = trim($data);
-	$data = stripcslashes($data);
-	$data = htmlspecialchars($data);
-	return $data;
+function test_input($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
 }
 ?>
+
 <html>
 <link rel="stylesheet" href="style.css">
 <body>

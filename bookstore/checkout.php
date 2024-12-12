@@ -9,186 +9,200 @@
 <?php
 session_start();
 
-if(isset($_SESSION['id'])){
-	$servername = "localhost";
-	$username = "root";
-	$password = "";
+if (isset($_SESSION['id'])) {
+    $servername = "localhost";
+    $username = "root";
+    $password = "";
 
-	$conn = new mysqli($servername, $username, $password); 
+    $conn = new mysqli($servername, $username, $password, "bookstore"); 
 
-	if ($conn->connect_error) {
-	    die("Connection failed: " . $conn->connect_error);
-	} 
+    if ($conn->connect_error) {
+        die("Connection failed: " . $conn->connect_error);
+    }
 
-	$sql = "USE bookstore";
-	$conn->query($sql);
+    $cID = 0;
+    $sql = "SELECT CustomerID FROM customer WHERE UserID = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $_SESSION['id']);
+    $stmt->execute();
+    $stmt->bind_result($cID);
+    $stmt->fetch();
+    $stmt->close();
 
-	$sql = "SELECT CustomerID from customer WHERE UserID = ".$_SESSION['id']."";
-	$result = $conn->query($sql);
-	while($row = $result->fetch_assoc()){
-		$cID = $row['CustomerID'];
-	}
+    if ($cID > 0) {
+        // Cập nhật giỏ hàng
+        $sql = "UPDATE cart SET CustomerID = ? WHERE CustomerID IS NULL";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $cID);
+        $stmt->execute();
+        $stmt->close();
 
-	$sql = "UPDATE cart SET CustomerID = ".$cID." WHERE 1";
-	$conn->query($sql);
+        // Chuyển dữ liệu từ giỏ hàng sang bảng đơn hàng
+        $sql = "SELECT * FROM cart WHERE CustomerID = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $cID);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $sql = "INSERT INTO `order` (CustomerID, BookID, DatePurchase, Quantity, TotalPrice, Status) 
+                    VALUES (?, ?, CURRENT_TIME, ?, ?, 'N')";
+            $stmt2 = $conn->prepare($sql);
+            $stmt2->bind_param("iiid", $cID, $row['BookID'], $row['Quantity'], $row['TotalPrice']);
+            $stmt2->execute();
+            $stmt2->close();
+        }
+        $stmt->close();
 
-	$sql = "SELECT * FROM cart";
-	$result = $conn->query($sql);
-	while($row = $result->fetch_assoc()){
-		$sql = "INSERT INTO `order`(CustomerID, BookID, DatePurchase, Quantity, TotalPrice, Status) 
-		VALUES(".$row['CustomerID'].", '".$row['BookID']
-		."', CURRENT_TIME, ".$row['Quantity'].", ".$row['TotalPrice'].", 'N')";
-		$conn->query($sql);
-	}
-	$sql = "DELETE FROM cart";
-	$conn->query($sql);
+        // Xóa giỏ hàng
+        $sql = "DELETE FROM cart WHERE CustomerID = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $cID);
+        $stmt->execute();
+        $stmt->close();
 
-	$sql = "SELECT customer.CustomerName, customer.CustomerIC, customer.CustomerGender, customer.CustomerAddress, customer.CustomerEmail, customer.CustomerPhone, book.BookTitle, book.Price, book.Image, `order`.`DatePurchase`, `order`.`Quantity`, `order`.`TotalPrice`
-		FROM customer, book, `order`
-		WHERE `order`.`CustomerID` = customer.CustomerID AND `order`.`BookID` = book.BookID AND `order`.`Status` = 'N' AND `order`.`CustomerID` = ".$cID."";
-	$result = $conn->query($sql);
-	echo '<div class="container">';
-	echo '<blockquote>';
+        // Hiển thị thông tin đơn hàng
+        $sql = "SELECT customer.CustomerName, customer.CustomerIC, customer.CustomerGender, customer.CustomerAddress, 
+                       customer.CustomerEmail, customer.CustomerPhone, book.BookTitle, book.Price, book.Image, 
+                       `order`.`DatePurchase`, `order`.`Quantity`, `order`.`TotalPrice`
+                FROM customer 
+                JOIN `order` ON `order`.`CustomerID` = customer.CustomerID 
+                JOIN book ON `order`.`BookID` = book.BookID 
+                WHERE `order`.`Status` = 'N' AND `order`.`CustomerID` = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $cID);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        echo '<div class="container">';
+        echo '<blockquote>';
+        echo '<input class="button" style="float: right;" type="button" name="cancel" value="Continue Shopping" onClick="window.location=\'index.php\';" />';
+        echo '<h2 style="color: #000;">Order Successful</h2>';
+        echo "<table style='width:100%'>";
+        echo "<tr><th>Order Summary</th><th></th></tr>";
+        $row = $result->fetch_assoc();
+        echo "<tr><td>Name: </td><td>" . htmlspecialchars($row['CustomerName']) . "</td></tr>";
+        echo "<tr><td>No.Number: </td><td>" . htmlspecialchars($row['CustomerIC']) . "</td></tr>";
+        echo "<tr><td>E-mail: </td><td>" . htmlspecialchars($row['CustomerEmail']) . "</td></tr>";
+        echo "<tr><td>Mobile Number: </td><td>" . htmlspecialchars($row['CustomerPhone']) . "</td></tr>";
+        echo "<tr><td>Gender: </td><td>" . htmlspecialchars($row['CustomerGender']) . "</td></tr>";
+        echo "<tr><td>Address: </td><td>" . htmlspecialchars($row['CustomerAddress']) . "</td></tr>";
+        echo "<tr><td>Date: </td><td>" . htmlspecialchars($row['DatePurchase']) . "</td></tr>";
+        echo "</blockquote>";
+
+        // Hiển thị chi tiết sản phẩm trong đơn hàng
+        $total = 0;
+        while ($row = $result->fetch_assoc()) {
+            echo "<tr><td style='border-top: 2px solid #ccc;'>";
+            echo '<img src="' . htmlspecialchars($row["Image"]) . '" width="20%"></td><td style="border-top: 2px solid #ccc;">';
+            echo htmlspecialchars($row['BookTitle']) . "<br>RM" . number_format($row['Price'], 2) . "<br>";
+            echo "Quantity: " . $row['Quantity'] . "<br>";
+            echo "</td></tr>";
+            $total += $row['TotalPrice'];
+        }
+        echo "<tr><td style='background-color: #ccc;'></td><td style='text-align: right;background-color: #ccc;'>Total Price: <b>RM" . number_format($total, 2) . "</b></td></tr>";
+        echo "</table>";
+        echo "</div>";
+
+        // Cập nhật trạng thái đơn hàng
+        $sql = "UPDATE `order` SET Status = 'y' WHERE CustomerID = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $cID);
+        $stmt->execute();
+        $stmt->close();
+    }
+}
+
+if (isset($_POST['submitButton'])) {
+    // Xử lý dữ liệu người dùng
+    $name = $email = $gender = $address = $ic = $contact = "";
+    $nameErr = $emailErr = $genderErr = $addressErr = $icErr = $contactErr = "";
+
+    // Kiểm tra dữ liệu đầu vào
+    if (empty($_POST["name"])) {
+        $nameErr = "Please enter your name";
+    } else {
+        $name = test_input($_POST["name"]);
+        if (!preg_match("/^[a-zA-Z ]*$/", $name)) {
+            $nameErr = "Only letters and white space allowed";
+        }
+    }
+
+    if (empty($_POST["ic"])) {
+        $icErr = "Please enter your IC number";
+    } else {
+        $ic = test_input($_POST["ic"]);
+        if (!preg_match("/^[0-9 -]*$/", $ic)) {
+            $icErr = "Please enter a valid IC number";
+        }
+    }
+
+    if (empty($_POST["email"])) {
+        $emailErr = "Please enter your email address";
+    } else {
+        $email = test_input($_POST["email"]);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $emailErr = "Invalid email format";
+        }
+    }
+
+    if (empty($_POST["contact"])) {
+        $contactErr = "Please enter your phone number";
+    } else {
+        $contact = test_input($_POST["contact"]);
+        if (!preg_match("/^[0-9 -]*$/", $contact)) {
+            $contactErr = "Please enter a valid phone number";
+        }
+    }
+
+    if (empty($_POST["gender"])) {
+        $genderErr = "* Gender is required!";
+    } else {
+        $gender = test_input($_POST["gender"]);
+    }
+
+    if (empty($_POST["address"])) {
+        $addressErr = "Please enter your address";
+    } else {
+        $address = test_input($_POST["address"]);
+    }
+
+    // Nếu không có lỗi, tiếp tục xử lý đơn hàng
+    if (empty($nameErr) && empty($icErr) && empty($emailErr) && empty($contactErr) && empty($genderErr) && empty($addressErr)) {
+        $sql = "INSERT INTO customer (CustomerName, CustomerPhone, CustomerIC, CustomerEmail, CustomerAddress, CustomerGender) 
+                VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ssssss", $name, $contact, $ic, $email, $address, $gender);
+        $stmt->execute();
+        $stmt->close();
+
+        // Lấy CustomerID
+        $sql = "SELECT CustomerID FROM customer WHERE CustomerName = ? AND CustomerIC = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ss", $name, $ic);
+        $stmt->execute();
+        $stmt->bind_result($cID);
+        $stmt->fetch();
+        $stmt->close();
+
+        if ($cID > 0) {
+            // Cập nhật giỏ hàng và xử lý đơn hàng
+            $sql = "UPDATE cart SET CustomerID = ? WHERE CustomerID IS NULL";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $cID);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+}
+
+function test_input($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
+}
 ?>
-<input class="button" style="float: right;" type="button" name="cancel" value="Continue Shopping" onClick="window.location='index.php';" />
-<?php
-	echo '<h2 style="color: #000;">Order Successful</h2>';
-	echo "<table style='width:100%'>";
-	echo "<tr><th>Order Summary</th>";
-	echo "<th></th></tr>";
-	$row = $result->fetch_assoc();
-	echo "<tr><td>Name: </td><td>".$row['CustomerName']."</td></tr>";
-	echo "<tr><td>No.Number: </td><td>".$row['CustomerIC']."</td></tr>";
-	echo "<tr><td>E-mail: </td><td>".$row['CustomerEmail']."</td></tr>";
-	echo "<tr><td>Mobile Number: </td><td>".$row['CustomerPhone']."</td></tr>";
-	echo "<tr><td>Gender: </td><td>".$row['CustomerGender']."</td></tr>";
-	echo "<tr><td>Address: </td><td>".$row['CustomerAddress']."</td></tr>";
-	echo "<tr><td>Date: </td><td>".$row['DatePurchase']."</td></tr>";
-	echo "</blockquote>";
 
-	$sql = "SELECT customer.CustomerName, customer.CustomerIC, customer.CustomerGender, customer.CustomerAddress, customer.CustomerEmail, customer.CustomerPhone, book.BookTitle, book.Price, book.Image, `order`.`DatePurchase`, `order`.`Quantity`, `order`.`TotalPrice`
-		FROM customer, book, `order`
-		WHERE `order`.`CustomerID` = customer.CustomerID AND `order`.`BookID` = book.BookID AND `order`.`Status` = 'N' AND `order`.`CustomerID` = ".$cID."";
-	$result = $conn->query($sql);
-	$total = 0;
-	while($row = $result->fetch_assoc()){
-		echo "<tr><td style='border-top: 2px solid #ccc;'>";
-		echo '<img src="'.$row["Image"].'"width="20%"></td><td style="border-top: 2px solid #ccc;">';
-    	echo $row['BookTitle']."<br>RM".$row['Price']."<br>";
-    	echo "Quantity: ".$row['Quantity']."<br>";
-    	echo "</td></tr>";
-    	$total += $row['TotalPrice'];
-	}
-	echo "<tr><td style='background-color: #ccc;'></td><td style='text-align: right;background-color: #ccc;''>Total Price: <b>RM".$total."</b></td></tr>";
-	echo "</table>";
-	echo "</div>";
-
-	$sql = "UPDATE `order` SET Status = 'y' WHERE CustomerID = ".$cID."";
-	$conn->query($sql);
-}
-
-$nameErr = $emailErr = $genderErr = $addressErr = $icErr = $contactErr = "";
-$name = $email = $gender = $address = $ic = $contact = "";
-$cID;
-
-if(isset($_POST['submitButton'])){
-	if (empty($_POST["name"])) {
-		$nameErr = "Please enter your name";
-	}else{
-		if (!preg_match("/^[a-zA-Z ]*$/", $name)){
-			$nameErr = "Only letters and white space allowed";
-			$name = "";
-		}else{
-			$name = $_POST['name'];
-			if (empty($_POST["ic"])){
-				$icErr = "Please enter your IC number";
-			}else{
-				if(!preg_match("/^[0-9 -]*$/", $ic)){
-					$icErr = "Please enter a valid IC number";
-					$ic = "";
-				}else{
-					$ic = $_POST['ic'];
-					if (empty($_POST["email"])){
-						$emailErr = "Please enter your email address";
-					}else{
-						if (filter_var($email, FILTER_VALIDATE_EMAIL)){
-							$emailErr = "Invalid email format";
-							$email = "";
-						}else{
-							$email = $_POST['email'];
-							if (empty($_POST["contact"])){
-								$contactErr = "Please enter your phone number";
-							}else{
-								if(!preg_match("/^[0-9 -]*$/", $contact)){
-									$contactErr = "Please enter a valid phone number";
-									$contact = "";
-								}else{
-									$contact = $_POST['contact'];
-									if (empty($_POST["gender"])){
-										$genderErr = "* Gender is required!";
-										$gender = "";
-									}else{
-										$gender = $_POST['gender'];
-										if (empty($_POST["address"])){
-											$addressErr = "Please enter your address";
-											$address = "";
-										}else{
-											$address = $_POST['address'];
-
-											$servername = "localhost";
-											$username = "root";
-											$password = "";
-
-											$conn = new mysqli($servername, $username, $password); 
-
-											if ($conn->connect_error) {
-											    die("Connection failed: " . $conn->connect_error);
-											} 
-
-											$sql = "USE bookstore";
-											$conn->query($sql);
-
-											$sql = "INSERT INTO customer(CustomerName, CustomerPhone, CustomerIC, CustomerEmail, CustomerAddress, CustomerGender) 
-											VALUES('".$name."', '".$contact."', '".$ic."', '".$email."', '".$address."', '".$gender."')";
-											$conn->query($sql);
- 
-											$sql = "SELECT CustomerID from customer WHERE CustomerName = '".$name."' AND CustomerIC = '".$ic."'";
-											$result = $conn->query($sql);
-											while($row = $result->fetch_assoc()){
-												$cID = $row['CustomerID'];
-											}
-
-											$sql = "UPDATE cart SET CustomerID = ".$cID." WHERE 1";
-											$conn->query($sql);
-
-											$sql = "SELECT * FROM cart";
-											$result = $conn->query($sql);
-											while($row = $result->fetch_assoc()){
-												$sql = "INSERT INTO `order`(CustomerID, BookID, DatePurchase, Quantity, TotalPrice, Status) 
-												VALUES(".$row['CustomerID'].", '".$row['BookID']
-												."', CURRENT_TIME, ".$row['Quantity'].", ".$row['TotalPrice'].", 'N')";
-												$conn->query($sql);
-											}
-											$sql = "DELETE FROM cart";
-											$conn->query($sql);
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}
-function test_input($data){
-	$data = trim($data);
-	$data = stripcslashes($data);
-	$data = htmlspecialchars($data);
-	return $data;
-}
-?>
 <style> 
 header {
 	background-color: rgb(0,51,102);

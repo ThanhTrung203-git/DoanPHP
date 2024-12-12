@@ -5,113 +5,131 @@ $name = $email = $gender = $address = $ic = $contact = $uname = $upassword = "";
 $cID;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-	if (empty($_POST["name"])) {
-		$nameErr = "Please enter your name";
-	}else{
-		if (!preg_match("/^[a-zA-Z ]*$/", $name)){
-			$nameErr = "Only letters and white space allowed";
-			$name = "";
-		}else{
-			$name = $_POST['name'];
+    // Kiểm tra tên
+    if (empty($_POST["name"])) {
+        $nameErr = "Please enter your name";
+    } else {
+        if (!preg_match("/^[a-zA-Z ]*$/", $_POST["name"])) {
+            $nameErr = "Only letters and white space allowed";
+        } else {
+            $name = test_input($_POST["name"]);
+        }
+    }
 
-			if (empty($_POST["uname"])) {
-				$usernameErr = "Please enter your Username";
-				$uname = "";
-			}else{
-				$uname = $_POST['uname'];
+    // Kiểm tra tên người dùng
+    if (empty($_POST["uname"])) {
+        $usernameErr = "Please enter your Username";
+    } else {
+        $uname = test_input($_POST["uname"]);
+    }
 
-				if (empty($_POST["upassword"])) {
-					$passwordErr = "Please enter your Password";
-					$upassword = "";
-				}else{
-					$upassword = $_POST['upassword'];
+    // Kiểm tra mật khẩu
+    if (empty($_POST["upassword"])) {
+        $passwordErr = "Please enter your Password";
+    } else {
+        $upassword = test_input($_POST["upassword"]);
+    }
 
-					if (empty($_POST["ic"])){
-						$icErr = "Please enter your IC number";
-					}else{
-						if(!preg_match("/^[0-9 -]*$/", $ic)){
-							$icErr = "Please enter a valid IC number";
-							$ic = "";
-						}else{
-							$ic = $_POST['ic'];
+    // Kiểm tra số IC
+    if (empty($_POST["ic"])) {
+        $icErr = "Please enter your IC number";
+    } else {
+        if (!preg_match("/^[0-9 -]*$/", $_POST["ic"])) {
+            $icErr = "Please enter a valid IC number";
+        } else {
+            $ic = test_input($_POST["ic"]);
+        }
+    }
 
-							if (empty($_POST["email"])){
-								$emailErr = "Please enter your email address";
-							}else{
-								if (filter_var($email, FILTER_VALIDATE_EMAIL)){
-									$emailErr = "Invalid email format";
-									$email = "";
-								}else{
-									$email = $_POST['email'];
+    // Kiểm tra email
+    if (empty($_POST["email"])) {
+        $emailErr = "Please enter your email address";
+    } else {
+        $email = test_input($_POST["email"]);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $emailErr = "Invalid email format";
+        }
+    }
 
-									if (empty($_POST["contact"])){
-										$contactErr = "Please enter your phone number";
-									}else{
-										if(!preg_match("/^[0-9 -]*$/", $contact)){
-											$contactErr = "Please enter a valid phone number";
-											$contact = "";
-										}else{
-											$contact = $_POST['contact'];
+    // Kiểm tra số điện thoại
+    if (empty($_POST["contact"])) {
+        $contactErr = "Please enter your phone number";
+    } else {
+        if (!preg_match("/^[0-9 -]*$/", $_POST["contact"])) {
+            $contactErr = "Please enter a valid phone number";
+        } else {
+            $contact = test_input($_POST["contact"]);
+        }
+    }
 
-											if (empty($_POST["gender"])){
-												$genderErr = "* Gender is required!";
-												$gender = "";
-											}else{
-												$gender = $_POST['gender'];
+    // Kiểm tra giới tính
+    if (empty($_POST["gender"])) {
+        $genderErr = "* Gender is required!";
+    } else {
+        $gender = test_input($_POST["gender"]);
+    }
 
-												if (empty($_POST["address"])){
-													$addressErr = "Please enter your address";
-													$address = "";
-												}else{
-													$address = $_POST['address'];
+    // Kiểm tra địa chỉ
+    if (empty($_POST["address"])) {
+        $addressErr = "Please enter your address";
+    } else {
+        $address = test_input($_POST["address"]);
+    }
 
-													$servername = "localhost";
-													$username = "root";
-													$password = "";
+    // Nếu không có lỗi, thực hiện thao tác lưu dữ liệu vào cơ sở dữ liệu
+    if (empty($nameErr) && empty($emailErr) && empty($genderErr) && empty($addressErr) && empty($icErr) && empty($contactErr) && empty($usernameErr) && empty($passwordErr)) {
 
-													$conn = new mysqli($servername, $username, $password); 
+        try {
+            // Kết nối PDO
+            $pdo = new PDO("mysql:host=localhost;dbname=bookstore", "root", "");
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-													if ($conn->connect_error) {
-													    die("Connection failed: " . $conn->connect_error);
-													} 
+            // Mã hóa mật khẩu
+            $hashedPassword = password_hash($upassword, PASSWORD_DEFAULT);
 
-													$sql = "USE bookstore";
-													$conn->query($sql);
+            // Chèn dữ liệu vào bảng users
+            $sql = "INSERT INTO users(UserName, Password) VALUES(:uname, :upassword)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindParam(':uname', $uname);
+            $stmt->bindParam(':upassword', $hashedPassword);
+            $stmt->execute();
 
-													$sql = "INSERT INTO users(UserName, Password) VALUES('".$uname."', '".$upassword."')";
-													$conn->query($sql);
+            // Lấy UserID của người dùng vừa đăng ký
+            $userID = $pdo->lastInsertId();
 
-													$sql = "SELECT UserID FROM users WHERE UserName = '".$uname."'";
-													$result = $conn->query($sql);
-													while($row = $result->fetch_assoc()){
-														$id = $row['UserID'];
-													}
+            // Chèn dữ liệu vào bảng customer
+            $sql = "INSERT INTO customer(CustomerName, CustomerPhone, CustomerIC, CustomerEmail, CustomerAddress, CustomerGender, UserID) 
+                    VALUES(:name, :contact, :ic, :email, :address, :gender, :userID)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindParam(':name', $name);
+            $stmt->bindParam(':contact', $contact);
+            $stmt->bindParam(':ic', $ic);
+            $stmt->bindParam(':email', $email);
+            $stmt->bindParam(':address', $address);
+            $stmt->bindParam(':gender', $gender);
+            $stmt->bindParam(':userID', $userID);
+            $stmt->execute();
 
-													$sql = "INSERT INTO customer(CustomerName, CustomerPhone, CustomerIC, CustomerEmail, CustomerAddress, CustomerGender, UserID) 
-													VALUES('".$name."', '".$contact."', '".$ic."', '".$email."', '".$address."', '".$gender."', ".$id.")";
-													$conn->query($sql);
+            // Chuyển hướng về trang chủ
+            header("Location:index.php");
 
-													header("Location:index.php");
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}												
-function test_input($data){
-	$data = trim($data);
-	$data = stripcslashes($data);
-	$data = htmlspecialchars($data);
-	return $data;
+        } catch (PDOException $e) {
+            echo "Error: " . $e->getMessage();
+        }
+
+        // Đóng kết nối PDO
+        $pdo = null;
+    }
+}
+
+function test_input($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
 }
 ?>
+
 <html>
 <link rel="stylesheet" href="style.css">
 <body>
