@@ -1,6 +1,118 @@
 <html>
 <body style="font-family:Arial; margin: 0 auto; background-color: #f2f2f2;">
 <header>
+<style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background-color: #f2f2f2;
+        }
+
+        header {
+            background-color: rgb(0,51,102);
+            color: white;
+            padding: 10px 0;
+        }
+
+        header img {
+            height: 50px;
+            margin-left: 20px;
+        }
+
+        .hi {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+            margin-right: 20px;
+        }
+
+        .hi:hover {
+            background-color: #45a049;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .button:hover {
+            background-color: #45a049;
+        }
+
+        h2 {
+            color: #000;
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            margin-bottom: 20px;
+            border-collapse: collapse;
+        }
+
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        td img {
+            width: 20%;
+            border-radius: 4px;
+        }
+
+        .error {
+            color: red;
+            font-size: 14px;
+        }
+
+        .form-container {
+            margin-top: 20px;
+        }
+
+        .form-container input[type="text"], .form-container input[type="email"], .form-container textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        .form-container input[type="radio"] {
+            margin-right: 10px;
+        }
+
+        .form-container label {
+            font-size: 16px;
+        }
+    </style>
 <blockquote>
 	<img src="image/logo.png">
 	<input class="hi" style="float: right; margin: 2%;" type="button" name="cancel" value="Home" onClick="window.location='index.php';" />
@@ -14,64 +126,63 @@ if (isset($_SESSION['id'])) {
     $username = "root";
     $password = "";
 
-    $conn = new mysqli($servername, $username, $password, "bookstore"); 
-
-    if ($conn->connect_error) {
-        die("Connection failed: " . $conn->connect_error);
+    try {
+        // Kết nối PDO
+        $conn = new PDO("mysql:host=$servername;dbname=bookstore", $username, $password);
+        // Thiết lập chế độ lỗi
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    } catch(PDOException $e) {
+        echo "Connection failed: " . $e->getMessage();
     }
 
     $cID = 0;
-    $sql = "SELECT CustomerID FROM customer WHERE UserID = ?";
+    $sql = "SELECT CustomerID FROM customer WHERE UserID = :userID";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $_SESSION['id']);
+    $stmt->bindParam(':userID', $_SESSION['id']);
     $stmt->execute();
-    $stmt->bind_result($cID);
-    $stmt->fetch();
-    $stmt->close();
+    $cID = $stmt->fetchColumn();
 
     if ($cID > 0) {
         // Cập nhật giỏ hàng
-        $sql = "UPDATE cart SET CustomerID = ? WHERE CustomerID IS NULL";
+        $sql = "UPDATE cart SET CustomerID = :customerID WHERE CustomerID IS NULL";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $cID);
+        $stmt->bindParam(':customerID', $cID);
         $stmt->execute();
-        $stmt->close();
 
         // Chuyển dữ liệu từ giỏ hàng sang bảng đơn hàng
-        $sql = "SELECT * FROM cart WHERE CustomerID = ?";
+        $sql = "SELECT * FROM cart WHERE CustomerID = :customerID";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $cID);
+        $stmt->bindParam(':customerID', $cID);
         $stmt->execute();
-        $result = $stmt->get_result();
-        while ($row = $result->fetch_assoc()) {
+        $cartItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($cartItems as $row) {
             $sql = "INSERT INTO `order` (CustomerID, BookID, DatePurchase, Quantity, TotalPrice, Status) 
-                    VALUES (?, ?, CURRENT_TIME, ?, ?, 'N')";
+                    VALUES (:customerID, :bookID, CURRENT_TIME, :quantity, :totalPrice, 'N')";
             $stmt2 = $conn->prepare($sql);
-            $stmt2->bind_param("iiid", $cID, $row['BookID'], $row['Quantity'], $row['TotalPrice']);
+            $stmt2->bindParam(':customerID', $cID);
+            $stmt2->bindParam(':bookID', $row['BookID']);
+            $stmt2->bindParam(':quantity', $row['Quantity']);
+            $stmt2->bindParam(':totalPrice', $row['TotalPrice']);
             $stmt2->execute();
-            $stmt2->close();
         }
-        $stmt->close();
 
         // Xóa giỏ hàng
-        $sql = "DELETE FROM cart WHERE CustomerID = ?";
+        $sql = "DELETE FROM cart WHERE CustomerID = :customerID";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $cID);
+        $stmt->bindParam(':customerID', $cID);
         $stmt->execute();
-        $stmt->close();
 
-        // Hiển thị thông tin đơn hàng
+        // Lấy thông tin khách hàng
         $sql = "SELECT customer.CustomerName, customer.CustomerIC, customer.CustomerGender, customer.CustomerAddress, 
-                       customer.CustomerEmail, customer.CustomerPhone, book.BookTitle, book.Price, book.Image, 
-                       `order`.`DatePurchase`, `order`.`Quantity`, `order`.`TotalPrice`
+                customer.CustomerEmail, customer.CustomerPhone, `order`.`DatePurchase`
                 FROM customer 
                 JOIN `order` ON `order`.`CustomerID` = customer.CustomerID 
-                JOIN book ON `order`.`BookID` = book.BookID 
-                WHERE `order`.`Status` = 'N' AND `order`.`CustomerID` = ?";
+                WHERE `order`.`CustomerID` = :customerID LIMIT 1";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $cID);
+        $stmt->bindParam(':customerID', $cID);
         $stmt->execute();
-        $result = $stmt->get_result();
+        $customer = $stmt->fetch(PDO::FETCH_ASSOC);
 
         echo '<div class="container">';
         echo '<blockquote>';
@@ -79,36 +190,45 @@ if (isset($_SESSION['id'])) {
         echo '<h2 style="color: #000;">Order Successful</h2>';
         echo "<table style='width:100%'>";
         echo "<tr><th>Order Summary</th><th></th></tr>";
-        $row = $result->fetch_assoc();
-        echo "<tr><td>Name: </td><td>" . htmlspecialchars($row['CustomerName']) . "</td></tr>";
-        echo "<tr><td>No.Number: </td><td>" . htmlspecialchars($row['CustomerIC']) . "</td></tr>";
-        echo "<tr><td>E-mail: </td><td>" . htmlspecialchars($row['CustomerEmail']) . "</td></tr>";
-        echo "<tr><td>Mobile Number: </td><td>" . htmlspecialchars($row['CustomerPhone']) . "</td></tr>";
-        echo "<tr><td>Gender: </td><td>" . htmlspecialchars($row['CustomerGender']) . "</td></tr>";
-        echo "<tr><td>Address: </td><td>" . htmlspecialchars($row['CustomerAddress']) . "</td></tr>";
-        echo "<tr><td>Date: </td><td>" . htmlspecialchars($row['DatePurchase']) . "</td></tr>";
+        echo "<tr><td>Name: </td><td>" . htmlspecialchars($customer['CustomerName']) . "</td></tr>";
+        echo "<tr><td>No.Number: </td><td>" . htmlspecialchars($customer['CustomerIC']) . "</td></tr>";
+        echo "<tr><td>E-mail: </td><td>" . htmlspecialchars($customer['CustomerEmail']) . "</td></tr>";
+        echo "<tr><td>Mobile Number: </td><td>" . htmlspecialchars($customer['CustomerPhone']) . "</td></tr>";
+        echo "<tr><td>Gender: </td><td>" . htmlspecialchars($customer['CustomerGender']) . "</td></tr>";
+        echo "<tr><td>Address: </td><td>" . htmlspecialchars($customer['CustomerAddress']) . "</td></tr>";
+        echo "<tr><td>Date: </td><td>" . htmlspecialchars($customer['DatePurchase']) . "</td></tr>";
+        echo "</table>";
         echo "</blockquote>";
 
         // Hiển thị chi tiết sản phẩm trong đơn hàng
+        $sql = "SELECT book.BookTitle, book.Price, book.Image, `order`.`Quantity`, `order`.`TotalPrice`
+                FROM `order`
+                JOIN book ON `order`.`BookID` = book.BookID
+                WHERE `order`.`CustomerID` = :customerID AND `order`.`Status` = 'N'";
+        $stmt = $conn->prepare($sql);
+        $stmt->bindParam(':customerID', $cID);
+        $stmt->execute();
+        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         $total = 0;
-        while ($row = $result->fetch_assoc()) {
-            echo "<tr><td style='border-top: 2px solid #ccc;'>";
-            echo '<img src="' . htmlspecialchars($row["Image"]) . '" width="20%"></td><td style="border-top: 2px solid #ccc;">';
-            echo htmlspecialchars($row['BookTitle']) . "<br>RM" . number_format($row['Price'], 2) . "<br>";
-            echo "Quantity: " . $row['Quantity'] . "<br>";
-            echo "</td></tr>";
+        echo "<table style='width:100%'>";
+        echo "<tr><th>Product Details</th><th>Price</th><th>Quantity</th><th>Total Price</th></tr>";
+        foreach ($result as $row) {
+            echo "<tr><td>";
+            echo '<img src="' . htmlspecialchars($row["Image"]) . '" width="20%" />';
+            echo htmlspecialchars($row['BookTitle']);
+            echo "</td><td>RM " . number_format($row['Price'], 2) . "</td><td>" . $row['Quantity'] . "</td><td>RM " . number_format($row['TotalPrice'], 2) . "</td></tr>";
             $total += $row['TotalPrice'];
         }
-        echo "<tr><td style='background-color: #ccc;'></td><td style='text-align: right;background-color: #ccc;'>Total Price: <b>RM" . number_format($total, 2) . "</b></td></tr>";
+        echo "<tr><td colspan='3' style='text-align: right;'>Total Price:</td><td><b>RM " . number_format($total, 2) . "</b></td></tr>";
         echo "</table>";
         echo "</div>";
 
         // Cập nhật trạng thái đơn hàng
-        $sql = "UPDATE `order` SET Status = 'y' WHERE CustomerID = ?";
+        $sql = "UPDATE `order` SET Status = 'y' WHERE CustomerID = :customerID";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $cID);
+        $stmt->bindParam(':customerID', $cID);
         $stmt->execute();
-        $stmt->close();
     }
 }
 
@@ -169,29 +289,18 @@ if (isset($_POST['submitButton'])) {
     // Nếu không có lỗi, tiếp tục xử lý đơn hàng
     if (empty($nameErr) && empty($icErr) && empty($emailErr) && empty($contactErr) && empty($genderErr) && empty($addressErr)) {
         $sql = "INSERT INTO customer (CustomerName, CustomerPhone, CustomerIC, CustomerEmail, CustomerAddress, CustomerGender) 
-                VALUES (?, ?, ?, ?, ?, ?)";
+                VALUES (:name, :contact, :ic, :email, :address, :gender)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssssss", $name, $contact, $ic, $email, $address, $gender);
+        $stmt->bindParam(':name', $name);
+        $stmt->bindParam(':contact', $contact);
+        $stmt->bindParam(':ic', $ic);
+        $stmt->bindParam(':email', $email);
+        $stmt->bindParam(':address', $address);
+        $stmt->bindParam(':gender', $gender);
         $stmt->execute();
-        $stmt->close();
+        $id = $conn->lastInsertId();
 
-        // Lấy CustomerID
-        $sql = "SELECT CustomerID FROM customer WHERE CustomerName = ? AND CustomerIC = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ss", $name, $ic);
-        $stmt->execute();
-        $stmt->bind_result($cID);
-        $stmt->fetch();
-        $stmt->close();
-
-        if ($cID > 0) {
-            // Cập nhật giỏ hàng và xử lý đơn hàng
-            $sql = "UPDATE cart SET CustomerID = ? WHERE CustomerID IS NULL";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("i", $cID);
-            $stmt->execute();
-            $stmt->close();
-        }
+        echo '<br /><br /><b>Order successfully placed. Thank you for shopping with us!</b>';
     }
 }
 
@@ -202,173 +311,5 @@ function test_input($data) {
     return $data;
 }
 ?>
-
-<style> 
-header {
-	background-color: rgb(0,51,102);
-	width: 100%;
-}
-header img {
-	margin: 1%;
-}
-header .hi{
-    background-color: #fff;
-    border: none;
-    border-radius: 20px;
-    text-align: center;
-    transition-duration: 0.5s; 
-    padding: 8px 30px;
-    cursor: pointer;
-    color: #000;
-    margin-top: 15%;
-}
-header .hi:hover{
-    background-color: #ccc;
-}
-form{
-	margin-top: 1%;
-	float: left;
-	width: 40%;
-	color: #000;
-}
-input[type=text] {
-	padding: 5px;
-    border-radius: 3px;
-    box-sizing: border-box;
-    border: 2px solid #ccc;
-    transition: 0.5s;
-    outline: none;
-}
-input[type=text]:focus {
-    border: 2px solid rgb(0,51,102);
-}
-textarea {
-	outline: none;
-	border: 2px solid #ccc;
-}
-textarea:focus {
-	border: 2px solid rgb(0,51,102);
-}
-.button{
-    background-color: rgb(0,51,102);
-    border: none;
-    border-radius: 20px;
-    text-align: center;
-    transition-duration: 0.5s; 
-    padding: 8px 30px;
-    cursor: pointer;
-    color: #fff;
-}
-.button:hover {
-    background-color: rgb(102,255,255);
-    color: #000;
-}
-table {
-    border-collapse: collapse;
-    width: 60%;
-    float: right;
-}
-th, td {
-    text-align: left;
-    padding: 8px;
-}
-tr{background-color: #fff;}
-
-th {
-    background-color: rgb(0,51,102);
-    color: white;
-}
-.container {
-	width: 50%;
-    border-radius: 5px;
-    background-color: #f2f2f2;
-    padding: 20px;
-    margin: 0 auto;
-}
-</style>
-<blockquote>
-<?php
-if(!isset($_SESSION['id'])){
-	echo "<form method='post'  action=''>";
-
-	echo 'Name:<br><input type="text" name="name" placeholder="Full Name">';
-	echo '<span class="error" style="color: red; font-size: 0.8em;"><?php echo $nameErr;?></span><br><br>';
-
-	echo 'IC Number:<br><input type="text" name="ic" placeholder="xxxxxx-xx-xxxx">';
-	echo '<span class="error" style="color: red; font-size: 0.8em;"><?php echo $icErr;?></span><br><br>';
-
-	echo 'E-mail:<br><input type="text" name="email" placeholder="example@email.com">';
-	echo '<span class="error" style="color: red; font-size: 0.8em;"><?php echo $emailErr;?></span><br><br>';
-
-	echo 'Mobile Number:<br><input type="text" name="contact" placeholder="012-3456789">';
-	echo '<span class="error" style="color: red; font-size: 0.8em;"><?php echo $contactErr;?></span><br><br>';
-
-	echo '<label>Gender:</label><br>';
-	echo '<input type="radio" name="gender" if (isset($gender) && $gender == "Male") echo "checked"; value="Male">Male';
-	echo '<input type="radio" name="gender" if (isset($gender) && $gender == "Female") echo "checked"; value="Female">Female';
-	echo '<span class="error" style="color: red; font-size: 0.8em;"><?php echo $genderErr;?></span><br><br>';
-
-	echo '<label>Address:</label><br>';
-	   echo '<textarea name="address" cols="30" rows="5" placeholder="Address"></textarea>';
-	   echo '<span class="error" style="color: red; font-size: 0.8em;"><?php echo $addressErr;?></span><br><br>';
-?>
-<input class="button" type="button" name="cancel" value="Cancel" onClick="window.location='index.php';" />
-<?php
-	echo '<input class="button" type="submit" name="submitButton" value="CHECKOUT">';
-	echo '</form><br><br>';
-}
-
-if(isset($_POST['submitButton'])){
-	$servername = "localhost";
-	$username = "root";
-	$password = "";
-
-	$conn = new mysqli($servername, $username, $password); 
-
-	if ($conn->connect_error) {
-	    die("Connection failed: " . $conn->connect_error);
-	} 
-
-	$sql = "USE bookstore";
-	$conn->query($sql);
-
-	$sql = "SELECT customer.CustomerName, customer.CustomerIC, customer.CustomerGender, customer.CustomerAddress, customer.CustomerEmail, customer.CustomerPhone, book.BookTitle, book.Price, book.Image, `order`.`DatePurchase`, `order`.`Quantity`, `order`.`TotalPrice`
-		FROM customer, book, `order`
-		WHERE `order`.`CustomerID` = customer.CustomerID AND `order`.`BookID` = book.BookID AND `order`.`Status` = 'N' AND `order`.`CustomerID` = ".$cID."";
-	$result = $conn->query($sql);
-
-	echo '<table style="width: 40%">';
-	echo "<tr><th>Order Summary</th>";
-	echo "<th></th></tr>";
-	$row = $result->fetch_assoc();
-	echo "<tr><td>Name: </td><td>".$row['CustomerName']."</td></tr>";
-	echo "<tr><td>No.Number: </td><td>".$row['CustomerIC']."</td></tr>";
-	echo "<tr><td>E-mail: </td><td>".$row['CustomerEmail']."</td></tr>";
-	echo "<tr><td>Mobile Number: </td><td>".$row['CustomerPhone']."</td></tr>";
-	echo "<tr><td>Gender: </td><td>".$row['CustomerGender']."</td></tr>";
-	echo "<tr><td>Address: </td><td>".$row['CustomerAddress']."</td></tr>";
-	echo "<tr><td>Date: </td><td>".$row['DatePurchase']."</td></tr>";
-
-	$sql = "SELECT customer.CustomerName, customer.CustomerIC, customer.CustomerGender, customer.CustomerAddress, customer.CustomerEmail, customer.CustomerPhone, book.BookTitle, book.Price, book.Image, `order`.`DatePurchase`, `order`.`Quantity`, `order`.`TotalPrice`
-		FROM customer, book, `order`
-		WHERE `order`.`CustomerID` = customer.CustomerID AND `order`.`BookID` = book.BookID AND `order`.`Status` = 'N' AND `order`.`CustomerID` = ".$cID."";
-	$result = $conn->query($sql);
-	$total = 0;
-	while($row = $result->fetch_assoc()){
-		echo "<tr><td style='border-top: 2px solid #ccc;'>";
-		echo '<img src="'.$row["Image"].'"width="20%"></td><td style="border-top: 2px solid #ccc;">';
-    	echo $row['BookTitle']."<br>RM".$row['Price']."<br>";
-    	echo "Quantity: ".$row['Quantity']."<br>";
-    	echo "</td></tr>";
-    	$total += $row['TotalPrice'];
-	}
-	echo "<tr><td style='background-color: #ccc;'></td><td style='text-align: right;background-color: #ccc;'>Total Price: <b>RM".$total."</b></td></tr>";
-	echo "</table>";
-
-	$sql = "UPDATE `order` SET Status = 'y' WHERE CustomerID = ".$cID."";
-	$conn->query($sql);
-}
-?>
-</blockquote>
 </body>
 </html>

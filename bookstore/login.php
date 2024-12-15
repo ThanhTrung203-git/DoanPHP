@@ -3,16 +3,16 @@
 <body>
 <header>
 <blockquote>
-    <a href="index.php"><img src="image/logo.png"></a>
+    <a href="index.php"><img src="image/logo.png" alt="Logo"></a>
 </blockquote>
 </header>
 <blockquote>
 <div class="container">
 <center><h1>Login</h1></center>
 <form action="checklogin.php" method="post">
-    Username:<br><input type="text" name="username"/>
+    Username:<br><input type="text" name="username" required/>
     <br><br>
-    Password:<br><input type="password" name="pwd" />
+    Password:<br><input type="password" name="pwd" required/>
     <br><br>
     <input class="button" type="submit" value="Login"/>
     <input class="button" type="button" name="cancel" value="Cancel" onClick="window.location='index.php';" />
@@ -21,15 +21,15 @@
 <blockquote>
 <?php
 if (isset($_GET['errcode'])) {
-$errorMessages = [
-    1 => 'Invalid username or password. Please try again.',
-    2 => 'Please login.'
-];
+    $errorMessages = [
+        1 => 'Invalid username or password. Please try again.',
+        2 => 'Please login.'
+    ];
 
-$errcode = intval($_GET['errcode']);
-if (array_key_exists($errcode, $errorMessages)) {
-    echo '<span style="color: red;">' . htmlspecialchars($errorMessages[$errcode]) . '</span>';
-}
+    $errcode = intval($_GET['errcode']);
+    if (array_key_exists($errcode, $errorMessages)) {
+        echo '<span style="color: red;">' . htmlspecialchars($errorMessages[$errcode]) . '</span>';
+    }
 }
 ?>
 </body>
